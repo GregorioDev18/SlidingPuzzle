@@ -4,20 +4,48 @@ import br.com.davidbuzatto.jsge.core.engine.EngineFrame;
 import br.com.davidbuzatto.jsge.image.Image;
 import br.com.davidbuzatto.jsge.imgui.GuiButton;
 import br.com.davidbuzatto.jsge.imgui.GuiComponent;
+import java.net.URL;
 import java.util.ArrayList;
 
 public class Main extends EngineFrame {
 
-    private java.util.List<GuiComponent> components;
     private static final int size = 3;
+
+    private java.util.List<GuiComponent> components;
+
     private Piece[][] grid;
+    private Piece isMoving;
+
+    private int lastShuffleLin = -1;
+    private int lastShuffleCol = -1;
+    private int shuffleMovesRemaining = 0;
+
+    private boolean shuffling = false;
+
     private double pieceSize;
+    private double animationTime;
+    private double normalAnimationTime = 0.3;
+    private double shuffleAnimationTime = 0.05;
+    private double animationSteps;
+    private double xStart;
+    private double yStart;
+    private double xEnd;
+    private double yEnd;
+
+    private java.util.List<int[]> solutionPath;
+    private int solutionStep = 0;
+    private boolean solving = false;
+
+    private URL img;
+
     private Image pieceImg;
+
     private GuiButton btnShuffle;
+    private GuiButton btnSolve;
 
     public Main() {
 
-        super(600, 700, "Slinding Puzzle", 60, true);
+        super(600, 700, "Sliding Puzzle", 60, true);
 
     }
 
@@ -25,15 +53,24 @@ public class Main extends EngineFrame {
     public void create() {
         useAsDependencyForIMGUI();
 
+        components = new ArrayList<>();
+
         grid = new Piece[size][size];
+
+        solutionPath = new ArrayList<>();
+
         pieceSize = getScreenWidth() / size;
+
         pieceImg = loadImage("resources/images/twice.png");
 
         pieceImg.resize(getScreenWidth(), getScreenHeight());
 
-        components = new ArrayList<>();
+        isMoving = null;
+        animationTime = normalAnimationTime;
+        animationSteps = 0.0;
 
         btnShuffle = new GuiButton(0, getScreenHeight() - 60, 100, 30, "SHUFFLE");
+        btnSolve = new GuiButton(btnShuffle.getX() + btnShuffle.getWidth() + 10, getScreenHeight() - 60, 100, 30, "SOLVE");
 
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
@@ -44,11 +81,16 @@ public class Main extends EngineFrame {
         grid[size - 1][size - 1] = null;
 
         components.add(btnShuffle);
+        components.add(btnSolve);
     }
 
     @Override
     public void update(double delta) {
-        if (isMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        for (GuiComponent c : components) {
+            c.update(delta);
+        }
+
+        if (isMouseButtonPressed(MOUSE_BUTTON_LEFT) && isMoving == null) {
             for (int i = 0; i < size; i++) {
                 for (int j = 0; j < size; j++) {
                     if (grid[i][j] != null) {
@@ -60,12 +102,74 @@ public class Main extends EngineFrame {
             }
         }
 
-        if (btnShuffle.isMousePressed()) {
-            shuffle(1);
+        if (isMoving != null) {
+
+            animationSteps += delta;
+
+            double t = animationSteps / animationTime;
+
+            if (t > 1) {
+                t = 1;
+            }
+
+            double x = xStart + (xEnd - xStart) * t;
+            double y = yStart + (yEnd - yStart) * t;
+
+            isMoving.setPos(x, y);
+
+            if (t >= 1) {
+                isMoving.setPos(xEnd, yEnd);
+                isMoving = null;
+            }
+
         }
 
-        for (GuiComponent c : components) {
-            c.update(delta);
+        if (btnShuffle.isMousePressed()) {
+            animationTime = shuffleAnimationTime;
+            shuffleMovesRemaining = size * size * size * 2; // quantidade de movimentos
+            shuffling = true;
+        }
+
+        if (shuffling && isMoving == null && shuffleMovesRemaining > 0) {
+            shuffleOneMove();
+            shuffleMovesRemaining--;
+        }
+
+        if (shuffleMovesRemaining == 0) {
+            shuffling = false;
+            animationTime = normalAnimationTime;
+        }
+
+        if (btnSolve.isMousePressed() && isMoving == null) {
+
+            int[] start = getCurrentState();
+
+            solutionPath = new ArrayList<>();
+
+            boolean found = solveDFS(
+                    start,
+                    new java.util.HashSet<>(),
+                    solutionPath,
+                    0,
+                    80
+            );
+
+            if (found) {
+                solving = true;
+                solutionStep = 0;
+            }
+
+        }
+
+        if (solving && isMoving == null && solutionStep < solutionPath.size()) {
+
+            applyState(solutionPath.get(solutionStep));
+            solutionStep++;
+
+        }
+
+        if (solutionStep >= solutionPath.size()) {
+            solving = false;
         }
     }
 
@@ -88,6 +192,11 @@ public class Main extends EngineFrame {
     }
 
     private void movePiece(int lin, int col) {
+
+        if (isMoving != null) {
+            return;
+        }
+
         int[] neighborLin = {-1, 0, 1, 0};
         int[] neighborCol = {0, 1, 0, -1};
 
@@ -95,23 +204,42 @@ public class Main extends EngineFrame {
         int destCol = -1;
 
         for (int i = 0; i < 4; i++) {
-            int currentLine = lin + neighborLin[i];
+
+            int currentLin = lin + neighborLin[i];
             int currentCol = col + neighborCol[i];
 
-            if (currentLine >= 0 && currentLine < size && currentCol >= 0 && currentCol < size) {
-                if (grid[currentLine][currentCol] == null) {
-                    destLin = currentLine;
+            if (currentLin >= 0 && currentLin < size
+                    && currentCol >= 0 && currentCol < size) {
+
+                if (grid[currentLin][currentCol] == null) {
+                    destLin = currentLin;
                     destCol = currentCol;
                     break;
                 }
+
             }
+
         }
 
         if (destLin != -1) {
-            grid[destLin][destCol] = grid[lin][col];
+
+            Piece p = grid[lin][col];
+
+            grid[destLin][destCol] = p;
             grid[lin][col] = null;
-            recalculatePositions();
+
+            xStart = col * pieceSize;
+            yStart = lin * pieceSize;
+
+            xEnd = destCol * pieceSize;
+            yEnd = destLin * pieceSize;
+
+            isMoving = p;
+
+            animationSteps = 0;
+
         }
+
     }
 
     private void recalculatePositions() {
@@ -122,6 +250,47 @@ public class Main extends EngineFrame {
                 }
             }
         }
+    }
+
+    private void applyState(int[] state) {
+
+        Piece[] pieces = new Piece[size * size];
+
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+
+                Piece p = grid[i][j];
+
+                if (p != null) {
+                    pieces[p.getValue()] = p;
+                }
+
+            }
+        }
+
+        int k = 0;
+
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+
+                int val = state[k++];
+
+                if (val == -1) {
+                    grid[i][j] = null;
+                } else {
+
+                    Piece p = pieces[val];
+                    grid[i][j] = p;
+
+                    if (p != null) {
+                        p.setPos(j * pieceSize, i * pieceSize);
+                    }
+
+                }
+
+            }
+        }
+
     }
 
     private void shuffle(int times) {
@@ -158,6 +327,167 @@ public class Main extends EngineFrame {
 
         }
 
+    }
+
+    private int findEmpty(int[] state) {
+
+        for (int i = 0; i < state.length; i++) {
+            if (state[i] == -1) {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private int[] swap(int[] state, int a, int b) {
+
+        int[] newState = state.clone();
+
+        int temp = newState[a];
+        newState[a] = newState[b];
+        newState[b] = temp;
+
+        return newState;
+
+    }
+
+    private boolean solveDFS(int[] state, java.util.Set<String> visited, java.util.List<int[]> path, int depth, int maxDepth) {
+
+        if (isSolved(state)) {
+            return true;
+        }
+
+        if (depth >= maxDepth) {
+            return false;
+        }
+
+        String key = java.util.Arrays.toString(state);
+
+        if (visited.contains(key)) {
+            return false;
+        }
+
+        visited.add(key);
+
+        int empty = findEmpty(state);
+
+        int lin = empty / size;
+        int col = empty % size;
+
+        int[] dLin = {-1, 0, 1, 0};
+        int[] dCol = {0, 1, 0, -1};
+
+        for (int i = 0; i < 4; i++) {
+
+            int nl = lin + dLin[i];
+            int nc = col + dCol[i];
+
+            if (nl >= 0 && nl < size && nc >= 0 && nc < size) {
+
+                int pos = nl * size + nc;
+
+                int[] next = swap(state, empty, pos);
+
+                path.add(next);
+
+                if (solveDFS(next, visited, path, depth + 1, maxDepth)) {
+                    return true;
+                }
+
+                path.remove(path.size() - 1);
+
+            }
+
+        }
+
+        return false;
+
+    }
+
+    private void shuffleOneMove() {
+
+        int emptyLin = -1;
+        int emptyCol = -1;
+
+        // encontrar espaço vazio
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                if (grid[i][j] == null) {
+                    emptyLin = i;
+                    emptyCol = j;
+                }
+            }
+        }
+
+        int prevEmptyLin = emptyLin;
+        int prevEmptyCol = emptyCol;
+
+        int[] neighborLin = {-1, 0, 1, 0};
+        int[] neighborCol = {0, 1, 0, -1};
+
+        java.util.List<int[]> candidates = new ArrayList<>();
+
+        for (int i = 0; i < 4; i++) {
+
+            int lin = emptyLin + neighborLin[i];
+            int col = emptyCol + neighborCol[i];
+
+            if (lin >= 0 && lin < size && col >= 0 && col < size) {
+
+                if (!(lin == lastShuffleLin && col == lastShuffleCol)) {
+                    candidates.add(new int[]{lin, col});
+                }
+
+            }
+
+        }
+
+        if (!candidates.isEmpty()) {
+
+            java.util.Random rand = new java.util.Random();
+
+            int p = rand.nextInt(candidates.size());
+
+            int lin = candidates.get(p)[0];
+            int col = candidates.get(p)[1];
+
+            movePiece(lin, col);
+
+            lastShuffleLin = prevEmptyLin;
+            lastShuffleCol = prevEmptyCol;
+        }
+    }
+
+    private int[] getCurrentState() {
+
+        int[] state = new int[size * size];
+        int k = 0;
+
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+
+                if (grid[i][j] == null) {
+                    state[k++] = -1;
+                } else {
+                    state[k++] = grid[i][j].getValue();
+                }
+
+            }
+        }
+
+        return state;
+    }
+
+    private boolean isSolved(int[] state) {
+
+        for (int i = 0; i < state.length - 1; i++) {
+            if (state[i] != i) {
+                return false;
+            }
+        }
+
+        return state[state.length - 1] == -1;
     }
 
     //voltar a peça -> pilha
