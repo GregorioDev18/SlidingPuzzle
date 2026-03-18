@@ -39,4 +39,8 @@ public class Piece {
         this.pos.x = x;
         this.pos.y = y;
     }
+
+    public void setImage(Image image) {
+        this.image = image;
+    }
 }

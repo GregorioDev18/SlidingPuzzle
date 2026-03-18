@@ -2,10 +2,15 @@ package template;
 
 import br.com.davidbuzatto.jsge.core.engine.EngineFrame;
 import br.com.davidbuzatto.jsge.image.Image;
+import br.com.davidbuzatto.jsge.image.ImageUtils;
 import br.com.davidbuzatto.jsge.imgui.GuiButton;
 import br.com.davidbuzatto.jsge.imgui.GuiComponent;
+import br.com.davidbuzatto.jsge.imgui.GuiTextField;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.awt.Toolkit;
+import java.awt.datatransfer.DataFlavor;
 
 public class Main extends EngineFrame {
 
@@ -36,12 +41,14 @@ public class Main extends EngineFrame {
     private int solutionStep = 0;
     private boolean solving = false;
 
-    private URL img;
+    private URL urlImg;
 
     private Image pieceImg;
 
     private GuiButton btnShuffle;
     private GuiButton btnSolve;
+    private GuiButton btnUrl;
+    private GuiTextField tfUrl;
 
     public Main() {
 
@@ -59,9 +66,9 @@ public class Main extends EngineFrame {
 
         solutionPath = new ArrayList<>();
 
-        pieceSize = getScreenWidth() / size;
+        pieceImg = ImageUtils.loadImage("resources/images/twice.png");
 
-        pieceImg = loadImage("resources/images/twice.png");
+        pieceSize = getScreenWidth() / size;
 
         pieceImg.resize(getScreenWidth(), getScreenHeight());
 
@@ -71,6 +78,8 @@ public class Main extends EngineFrame {
 
         btnShuffle = new GuiButton(0, getScreenHeight() - 60, 100, 30, "SHUFFLE");
         btnSolve = new GuiButton(btnShuffle.getX() + btnShuffle.getWidth() + 10, getScreenHeight() - 60, 100, 30, "SOLVE");
+        tfUrl = new GuiTextField(btnSolve.getX() + btnSolve.getWidth() + 10, getScreenHeight() - 60, 100, 30, "");
+        btnUrl = new GuiButton(tfUrl.getX() + tfUrl.getWidth() + 10, getScreenHeight() - 60, 100, 30, "CHANGE");
 
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
@@ -82,12 +91,44 @@ public class Main extends EngineFrame {
 
         components.add(btnShuffle);
         components.add(btnSolve);
+        components.add(btnUrl);
+        components.add(tfUrl);
     }
 
     @Override
     public void update(double delta) {
+        if (isKeyDown(KEY_CONTROL) && isKeyPressed(KEY_V)) {
+            try {
+                String clipboard = (String) Toolkit.getDefaultToolkit()
+                        .getSystemClipboard()
+                        .getData(DataFlavor.stringFlavor);
+
+                tfUrl.setValue(clipboard);
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        
         for (GuiComponent c : components) {
             c.update(delta);
+        }
+
+        if (btnUrl.isMousePressed()) {
+            String url = tfUrl.getValue();
+
+            try {
+                urlImg = new URL(url);
+            } catch (MalformedURLException e) {
+                e.printStackTrace();
+            }
+
+            pieceImg = ImageUtils.loadImage(urlImg);
+            pieceImg.resize(getScreenWidth(), getScreenWidth());
+
+            drawImage();
+            
+            tfUrl.setValue("");
         }
 
         if (isMouseButtonPressed(MOUSE_BUTTON_LEFT) && isMoving == null) {
@@ -101,6 +142,8 @@ public class Main extends EngineFrame {
                 }
             }
         }
+
+        
 
         if (isMoving != null) {
 
@@ -182,9 +225,14 @@ public class Main extends EngineFrame {
             c.draw();
         }
 
+        drawImage();
+    }
+
+    private void drawImage() {
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
                 if (grid[i][j] != null) {
+                    grid[i][j].setImage(pieceImg);
                     grid[i][j].draw(this, size);
                 }
             }
