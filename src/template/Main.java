@@ -37,6 +37,9 @@ public class Main extends EngineFrame {
     private double xEnd;
     private double yEnd;
 
+    private double solveTimer;
+    private double solveDelay;
+
     private java.util.List<int[]> solutionPath;
     private int solutionStep = 0;
     private boolean solving = false;
@@ -75,6 +78,9 @@ public class Main extends EngineFrame {
         isMoving = null;
         animationTime = normalAnimationTime;
         animationSteps = 0.0;
+        
+        solveTimer = 0;
+        solveDelay = 0.2;
 
         btnShuffle = new GuiButton(0, getScreenHeight() - 60, 100, 30, "SHUFFLE");
         btnSolve = new GuiButton(btnShuffle.getX() + btnShuffle.getWidth() + 10, getScreenHeight() - 60, 100, 30, "SOLVE");
@@ -109,7 +115,7 @@ public class Main extends EngineFrame {
                 e.printStackTrace();
             }
         }
-        
+
         for (GuiComponent c : components) {
             c.update(delta);
         }
@@ -127,9 +133,11 @@ public class Main extends EngineFrame {
             pieceImg.resize(getScreenWidth(), getScreenWidth());
 
             drawImage();
-            
+
             tfUrl.setValue("");
         }
+
+        btnUrl.setEnabled(!(tfUrl.getValue() == ""));
 
         if (isMouseButtonPressed(MOUSE_BUTTON_LEFT) && isMoving == null) {
             for (int i = 0; i < size; i++) {
@@ -142,8 +150,6 @@ public class Main extends EngineFrame {
                 }
             }
         }
-
-        
 
         if (isMoving != null) {
 
@@ -189,13 +195,7 @@ public class Main extends EngineFrame {
 
             solutionPath = new ArrayList<>();
 
-            boolean found = solveDFS(
-                    start,
-                    new java.util.HashSet<>(),
-                    solutionPath,
-                    0,
-                    80
-            );
+            boolean found = solveDFS(start, new java.util.HashSet<>(), solutionPath, 0, 80);
 
             if (found) {
                 solving = true;
@@ -206,14 +206,24 @@ public class Main extends EngineFrame {
 
         if (solving && isMoving == null && solutionStep < solutionPath.size()) {
 
-            applyState(solutionPath.get(solutionStep));
-            solutionStep++;
+            solveTimer += delta;
+
+            if (solveTimer >= solveDelay) {
+
+                applyState(solutionPath.get(solutionStep));
+                solutionStep++;
+
+                solveTimer = 0;
+
+            }
 
         }
 
         if (solutionStep >= solutionPath.size()) {
             solving = false;
         }
+
+        btnSolve.setEnabled(!(isSolved(getCurrentState())));
     }
 
     @Override
