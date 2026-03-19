@@ -1,10 +1,14 @@
 package template;
 
 import br.com.davidbuzatto.jsge.core.engine.EngineFrame;
+import static br.com.davidbuzatto.jsge.core.engine.EngineFrame.BLACK;
+import br.com.davidbuzatto.jsge.core.utils.ColorUtils;
 import br.com.davidbuzatto.jsge.image.Image;
 import br.com.davidbuzatto.jsge.image.ImageUtils;
 import br.com.davidbuzatto.jsge.imgui.GuiButton;
 import br.com.davidbuzatto.jsge.imgui.GuiComponent;
+import br.com.davidbuzatto.jsge.imgui.GuiGroup;
+import br.com.davidbuzatto.jsge.imgui.GuiInputDialog;
 import br.com.davidbuzatto.jsge.imgui.GuiTextField;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -43,6 +47,7 @@ public class Main extends EngineFrame {
     private java.util.List<int[]> solutionPath;
     private int solutionStep = 0;
     private boolean solving = false;
+    private boolean atStart = true;
 
     private URL urlImg;
 
@@ -51,7 +56,11 @@ public class Main extends EngineFrame {
     private GuiButton btnShuffle;
     private GuiButton btnSolve;
     private GuiButton btnUrl;
-    private GuiTextField tfUrl;
+    private GuiGroup groupUntitled;
+    private GuiInputDialog idUrl;
+
+    private String idUrlStatus;
+    private String fullInput = "";
 
     public Main() {
 
@@ -69,23 +78,30 @@ public class Main extends EngineFrame {
 
         solutionPath = new ArrayList<>();
 
-        pieceImg = ImageUtils.loadImage("resources/images/twice.png");
+        pieceImg = ImageUtils.loadImage("resources/images/ifsp.jpg");
 
         pieceSize = getScreenWidth() / size;
 
-        pieceImg.resize(getScreenWidth(), getScreenHeight());
+        pieceImg.resize(getScreenWidth(), getScreenWidth());
 
         isMoving = null;
         animationTime = normalAnimationTime;
         animationSteps = 0.0;
-        
+
         solveTimer = 0;
         solveDelay = 0.2;
 
-        btnShuffle = new GuiButton(0, getScreenHeight() - 60, 100, 30, "SHUFFLE");
-        btnSolve = new GuiButton(btnShuffle.getX() + btnShuffle.getWidth() + 10, getScreenHeight() - 60, 100, 30, "SOLVE");
-        tfUrl = new GuiTextField(btnSolve.getX() + btnSolve.getWidth() + 10, getScreenHeight() - 60, 100, 30, "");
-        btnUrl = new GuiButton(tfUrl.getX() + tfUrl.getWidth() + 10, getScreenHeight() - 60, 100, 30, "CHANGE");
+        groupUntitled = new GuiGroup(0, pieceImg.getHeight(), getScreenWidth(), getScreenHeight() - pieceImg.getHeight(), "");
+
+        btnShuffle = new GuiButton(groupUntitled.getX() + 10, pieceImg.getHeight() + 10, getScreenWidth() / 2 - 15, 30, "SHUFFLE");
+
+        btnSolve = new GuiButton(btnShuffle.getX() + btnShuffle.getWidth() + 10, btnShuffle.getY(), btnShuffle.getWidth(), 30, "SOLVE");
+
+        btnUrl = new GuiButton(btnShuffle.getX(), btnShuffle.getY() + btnShuffle.getHeight() + 15, getScreenWidth() - 20, 30, "LOAD IMAGE");
+
+        idUrl = new GuiInputDialog("Load Image", "Provide the image URL:", true);
+
+        idUrlStatus = "";
 
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
@@ -98,7 +114,8 @@ public class Main extends EngineFrame {
         components.add(btnShuffle);
         components.add(btnSolve);
         components.add(btnUrl);
-        components.add(tfUrl);
+        components.add(groupUntitled);
+        components.add(idUrl);
     }
 
     @Override
@@ -109,42 +126,82 @@ public class Main extends EngineFrame {
                         .getSystemClipboard()
                         .getData(DataFlavor.stringFlavor);
 
-                tfUrl.setValue(clipboard);
+                if (idUrl.isVisible()) {
+
+                    try {
+                        java.lang.reflect.Field field = GuiInputDialog.class.getDeclaredField("textField");
+                        field.setAccessible(true);
+
+                        GuiTextField internalTf = (GuiTextField) field.get(idUrl);
+
+                        fullInput += clipboard;
+
+                        int maxChars = 25;
+
+                        String display = fullInput;
+
+                        if (display.length() > maxChars) {
+                            display = display.substring(display.length() - maxChars);
+                        }
+
+                        internalTf.setValue(display);
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                }
 
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
 
+        if (btnUrl.isMousePressed()) {
+            atStart = true;
+            idUrl.show();
+            fullInput = "";
+        }
+
+        if (idUrl.isCloseButtonPressed()) {
+            atStart = false;
+            idUrlStatus = "closed";
+            idUrl.hide();
+        }
+
+        if (idUrl.isOkButtonPressed()) {
+            atStart = true;
+            idUrlStatus = fullInput;
+            changeImage(idUrlStatus);
+            idUrl.hide();
+        }
+
+        if (idUrl.isEnterKeyPressed()) {
+            atStart = true;
+            idUrlStatus = fullInput;
+            changeImage(idUrlStatus);
+            idUrl.hide();
+        }
+
+        if (idUrl.isCancelButtonPressed()) {
+            atStart = false;
+            idUrlStatus = "canceled";
+            idUrl.hide();
+        }
+
         for (GuiComponent c : components) {
             c.update(delta);
         }
 
-        if (btnUrl.isMousePressed()) {
-            String url = tfUrl.getValue();
-
-            try {
-                urlImg = new URL(url);
-            } catch (MalformedURLException e) {
-                e.printStackTrace();
-            }
-
-            pieceImg = ImageUtils.loadImage(urlImg);
-            pieceImg.resize(getScreenWidth(), getScreenWidth());
-
-            drawImage();
-
-            tfUrl.setValue("");
-        }
-
-        btnUrl.setEnabled(!(tfUrl.getValue() == ""));
-
-        if (isMouseButtonPressed(MOUSE_BUTTON_LEFT) && isMoving == null) {
-            for (int i = 0; i < size; i++) {
-                for (int j = 0; j < size; j++) {
-                    if (grid[i][j] != null) {
-                        if (grid[i][j].intercepts(getMouseX(), getMouseY())) {
-                            movePiece(i, j);
+        if (!idUrl.isVisible()) {
+            if (isMouseButtonPressed(MOUSE_BUTTON_LEFT) && isMoving == null && !shuffling && !solving) {
+                atStart = false;
+                for (int i = 0; i < size; i++) {
+                    for (int j = 0; j < size; j++) {
+                        if (grid[i][j] != null) {
+                            if (grid[i][j].intercepts(getMouseX(), getMouseY())) {
+                                movePiece(i, j);
+                            }
                         }
                     }
                 }
@@ -174,8 +231,9 @@ public class Main extends EngineFrame {
         }
 
         if (btnShuffle.isMousePressed()) {
+            atStart = false;
             animationTime = shuffleAnimationTime;
-            shuffleMovesRemaining = size * size * size * 2; // quantidade de movimentos
+            shuffleMovesRemaining = size * size * size * 2;
             shuffling = true;
         }
 
@@ -214,16 +272,16 @@ public class Main extends EngineFrame {
                 solutionStep++;
 
                 solveTimer = 0;
-
             }
-
         }
 
         if (solutionStep >= solutionPath.size()) {
             solving = false;
         }
 
-        btnSolve.setEnabled(!(isSolved(getCurrentState())));
+        btnSolve.setEnabled(!(isSolved(getCurrentState())) && !shuffling && !solving);
+        btnShuffle.setEnabled(!shuffling && !solving);
+        btnUrl.setEnabled(!shuffling && !solving);
     }
 
     @Override
@@ -231,11 +289,22 @@ public class Main extends EngineFrame {
 
         clearBackground(BLACK);
 
-        for (GuiComponent c : components) {
-            c.draw();
-        }
+        fillRectangle(groupUntitled.getBounds(), LIGHTGRAY);
+
+        groupUntitled.setBorderColor(LIGHTGRAY);
 
         drawImage();
+
+        for (GuiComponent c : components) {
+            c.draw();
+            c.setBackgroundColor(WHITE);
+        }
+
+        if (isSolved(getCurrentState()) && atStart == false) {
+            fillRectangle(0, 0, getScreenWidth(), pieceImg.getHeight(), ColorUtils.fade(BLACK, 0.5));
+        }
+
+        drawText(String.valueOf(solutionStep) + " / " + String.valueOf(solutionPath.size()), 0, 0, 20, PINK);
     }
 
     private void drawImage() {
@@ -247,6 +316,19 @@ public class Main extends EngineFrame {
                 }
             }
         }
+    }
+
+    private void changeImage(String url) {
+        try {
+            urlImg = new URL(url);
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+        }
+
+        pieceImg = ImageUtils.loadImage(urlImg);
+        pieceImg.resize(getScreenWidth(), getScreenWidth());
+
+        drawImage();
     }
 
     private void movePiece(int lin, int col) {
