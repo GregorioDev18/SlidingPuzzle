@@ -10,11 +10,14 @@ import br.com.davidbuzatto.jsge.imgui.GuiComponent;
 import br.com.davidbuzatto.jsge.imgui.GuiGroup;
 import br.com.davidbuzatto.jsge.imgui.GuiInputDialog;
 import br.com.davidbuzatto.jsge.imgui.GuiTextField;
+import java.awt.HeadlessException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.awt.Toolkit;
 import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.UnsupportedFlavorException;
+import java.io.IOException;
 
 public class Main extends EngineFrame {
 
@@ -33,16 +36,14 @@ public class Main extends EngineFrame {
 
     private double pieceSize;
     private double animationTime;
-    private double normalAnimationTime = 0.3;
-    private double shuffleAnimationTime = 0.05;
+    private final double normalAnimationTime = 0.3;
+    private final double shuffleAnimationTime = 0.1;
+    private final double solveAnimationTime = 0.2;
     private double animationSteps;
     private double xStart;
     private double yStart;
     private double xEnd;
     private double yEnd;
-
-    private double solveTimer;
-    private double solveDelay;
 
     private java.util.List<int[]> solutionPath;
     private int solutionStep = 0;
@@ -87,9 +88,6 @@ public class Main extends EngineFrame {
         isMoving = null;
         animationTime = normalAnimationTime;
         animationSteps = 0.0;
-
-        solveTimer = 0;
-        solveDelay = 0.2;
 
         groupUntitled = new GuiGroup(0, pieceImg.getHeight(), getScreenWidth(), getScreenHeight() - pieceImg.getHeight(), "");
 
@@ -146,14 +144,12 @@ public class Main extends EngineFrame {
 
                         internalTf.setValue(display);
 
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                    } catch (IllegalAccessException | IllegalArgumentException | NoSuchFieldException | SecurityException e) {
                     }
 
                 }
 
-            } catch (Exception e) {
-                e.printStackTrace();
+            } catch (HeadlessException | UnsupportedFlavorException | IOException e) {
             }
         }
 
@@ -195,7 +191,9 @@ public class Main extends EngineFrame {
 
         if (!idUrl.isVisible()) {
             if (isMouseButtonPressed(MOUSE_BUTTON_LEFT) && isMoving == null && !shuffling && !solving) {
-                atStart = false;
+                if (btnSolve.isEnabled()) {
+                    atStart = false;
+                }
                 for (int i = 0; i < size; i++) {
                     for (int j = 0; j < size; j++) {
                         if (grid[i][j] != null) {
@@ -232,7 +230,6 @@ public class Main extends EngineFrame {
 
         if (btnShuffle.isMousePressed()) {
             atStart = false;
-            animationTime = shuffleAnimationTime;
             shuffleMovesRemaining = size * size * size * 2;
             shuffling = true;
         }
@@ -244,11 +241,9 @@ public class Main extends EngineFrame {
 
         if (shuffleMovesRemaining == 0) {
             shuffling = false;
-            animationTime = normalAnimationTime;
         }
 
         if (btnSolve.isMousePressed() && isMoving == null) {
-
             int[] start = getCurrentState();
 
             solutionPath = new ArrayList<>();
@@ -264,19 +259,37 @@ public class Main extends EngineFrame {
 
         if (solving && isMoving == null && solutionStep < solutionPath.size()) {
 
-            solveTimer += delta;
+            int[] current = getCurrentState();
+            int[] next = solutionPath.get(solutionStep);
 
-            if (solveTimer >= solveDelay) {
+            int movePos = -1;
 
-                applyState(solutionPath.get(solutionStep));
-                solutionStep++;
-
-                solveTimer = 0;
+            for (int i = 0; i < current.length; i++) {
+                if (current[i] != next[i] && current[i] != -1) {
+                    movePos = i;
+                    break;
+                }
             }
+
+            int lin = movePos / size;
+            int col = movePos % size;
+
+            movePiece(lin, col);
+
+            solutionStep++;
+
         }
 
         if (solutionStep >= solutionPath.size()) {
             solving = false;
+        }
+
+        if (shuffling) {
+            animationTime = shuffleAnimationTime;
+        } else if (solving) {
+            animationTime = solveAnimationTime;
+        } else {
+            animationTime = normalAnimationTime;
         }
 
         btnSolve.setEnabled(!(isSolved(getCurrentState())) && !shuffling && !solving);
@@ -290,7 +303,6 @@ public class Main extends EngineFrame {
         clearBackground(BLACK);
 
         fillRectangle(groupUntitled.getBounds(), LIGHTGRAY);
-
         groupUntitled.setBorderColor(LIGHTGRAY);
 
         drawImage();
@@ -300,11 +312,13 @@ public class Main extends EngineFrame {
             c.setBackgroundColor(WHITE);
         }
 
-        if (isSolved(getCurrentState()) && atStart == false) {
+        if (isSolved(getCurrentState()) && !atStart && !shuffling && !solving) {
             fillRectangle(0, 0, getScreenWidth(), pieceImg.getHeight(), ColorUtils.fade(BLACK, 0.5));
         }
 
-        drawText(String.valueOf(solutionStep) + " / " + String.valueOf(solutionPath.size()), 0, 0, 20, PINK);
+        if (solving || isSolved(getCurrentState()) && !atStart) {
+            drawText(String.valueOf(solutionStep) + " / " + String.valueOf(solutionPath.size()), 0, 0, 20, PINK);
+        }
     }
 
     private void drawImage() {
@@ -322,7 +336,6 @@ public class Main extends EngineFrame {
         try {
             urlImg = new URL(url);
         } catch (MalformedURLException e) {
-            e.printStackTrace();
         }
 
         pieceImg = ImageUtils.loadImage(urlImg);
@@ -377,93 +390,6 @@ public class Main extends EngineFrame {
             isMoving = p;
 
             animationSteps = 0;
-
-        }
-
-    }
-
-    private void recalculatePositions() {
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
-                if (grid[i][j] != null) {
-                    grid[i][j].setPos(j * pieceSize, i * pieceSize);
-                }
-            }
-        }
-    }
-
-    private void applyState(int[] state) {
-
-        Piece[] pieces = new Piece[size * size];
-
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
-
-                Piece p = grid[i][j];
-
-                if (p != null) {
-                    pieces[p.getValue()] = p;
-                }
-
-            }
-        }
-
-        int k = 0;
-
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
-
-                int val = state[k++];
-
-                if (val == -1) {
-                    grid[i][j] = null;
-                } else {
-
-                    Piece p = pieces[val];
-                    grid[i][j] = p;
-
-                    if (p != null) {
-                        p.setPos(j * pieceSize, i * pieceSize);
-                    }
-
-                }
-
-            }
-        }
-
-    }
-
-    private void shuffle(int times) {
-
-        java.util.Random rand = new java.util.Random();
-
-        while (times > 0) {
-
-            int emptyLin = -1;
-            int emptyCol = -1;
-
-            // encontrar espaço vazio
-            for (int i = 0; i < size; i++) {
-                for (int j = 0; j < size; j++) {
-                    if (grid[i][j] == null) {
-                        emptyLin = i;
-                        emptyCol = j;
-                    }
-                }
-            }
-
-            int[] neighborLin = {-1, 0, 1, 0};
-            int[] neighborCol = {0, 1, 0, -1};
-
-            int dir = rand.nextInt(4);
-
-            int lin = emptyLin + neighborLin[dir];
-            int col = emptyCol + neighborCol[dir];
-
-            if (lin >= 0 && lin < size && col >= 0 && col < size) {
-                movePiece(lin, col);
-                times--;
-            }
 
         }
 
@@ -550,7 +476,6 @@ public class Main extends EngineFrame {
         int emptyLin = -1;
         int emptyCol = -1;
 
-        // encontrar espaço vazio
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
                 if (grid[i][j] == null) {
@@ -630,8 +555,6 @@ public class Main extends EngineFrame {
         return state[state.length - 1] == -1;
     }
 
-    //voltar a peça -> pilha
-    //salvar estado -> copia do array
     public static void main(String[] args) {
         new Main();
     }
