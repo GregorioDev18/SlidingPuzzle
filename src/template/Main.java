@@ -23,36 +23,38 @@ public class Main extends EngineFrame {
 
     private static final int size = 3;
 
-    private java.util.List<GuiComponent> components;
-
-    private Piece[][] grid;
-    private Piece isMoving;
+    private final double normalAnimationTime = 0.3;
+    private final double shuffleAnimationTime = 0.1;
+    private final double solveAnimationTime = 0.2;
 
     private int lastShuffleLin = -1;
     private int lastShuffleCol = -1;
     private int shuffleMovesRemaining = 0;
-
-    private boolean shuffling = false;
+    private int solutionStep = 0;
 
     private double pieceSize;
     private double animationTime;
-    private final double normalAnimationTime = 0.3;
-    private final double shuffleAnimationTime = 0.1;
-    private final double solveAnimationTime = 0.2;
     private double animationSteps;
     private double xStart;
     private double yStart;
     private double xEnd;
     private double yEnd;
+    private double hudX;
+    private double hudTargetX;
+    private double hudStartX;
+    private double hudAnimTime = 0.3;
+    private double hudAnimProgress = 0;
 
-    private java.util.List<int[]> solutionPath;
-    private int solutionStep = 0;
+    private boolean hudAnimating = false;
+    private boolean shuffling = false;
     private boolean solving = false;
     private boolean atStart = true;
 
-    private URL urlImg;
+    private java.util.List<int[]> solutionPath;
+    private java.util.List<GuiComponent> components;
 
-    private Image pieceImg;
+    private String idUrlStatus;
+    private String fullInput = "";
 
     private GuiButton btnShuffle;
     private GuiButton btnSolve;
@@ -60,8 +62,12 @@ public class Main extends EngineFrame {
     private GuiGroup groupUntitled;
     private GuiInputDialog idUrl;
 
-    private String idUrlStatus;
-    private String fullInput = "";
+    private Piece[][] grid;
+    private Piece isMoving;
+
+    private URL urlImg;
+
+    private Image pieceImg;
 
     public Main() {
 
@@ -80,25 +86,24 @@ public class Main extends EngineFrame {
         solutionPath = new ArrayList<>();
 
         pieceImg = ImageUtils.loadImage("resources/images/ifsp.jpg");
-
         pieceSize = getScreenWidth() / size;
-
         pieceImg.resize(getScreenWidth(), getScreenWidth());
 
         isMoving = null;
+
         animationTime = normalAnimationTime;
         animationSteps = 0.0;
+
+        hudTargetX = 0;
+        hudX = -120;
 
         groupUntitled = new GuiGroup(0, pieceImg.getHeight(), getScreenWidth(), getScreenHeight() - pieceImg.getHeight(), "");
 
         btnShuffle = new GuiButton(groupUntitled.getX() + 10, pieceImg.getHeight() + 10, getScreenWidth() / 2 - 15, 30, "SHUFFLE");
-
         btnSolve = new GuiButton(btnShuffle.getX() + btnShuffle.getWidth() + 10, btnShuffle.getY(), btnShuffle.getWidth(), 30, "SOLVE");
-
         btnUrl = new GuiButton(btnShuffle.getX(), btnShuffle.getY() + btnShuffle.getHeight() + 15, getScreenWidth() - 20, 30, "LOAD IMAGE");
 
         idUrl = new GuiInputDialog("Load Image", "Provide the image URL:", true);
-
         idUrlStatus = "";
 
         for (int i = 0; i < size; i++) {
@@ -146,7 +151,6 @@ public class Main extends EngineFrame {
 
                     } catch (IllegalAccessException | IllegalArgumentException | NoSuchFieldException | SecurityException e) {
                     }
-
                 }
 
             } catch (HeadlessException | UnsupportedFlavorException | IOException e) {
@@ -191,6 +195,7 @@ public class Main extends EngineFrame {
 
         if (!idUrl.isVisible()) {
             if (isMouseButtonPressed(MOUSE_BUTTON_LEFT) && isMoving == null && !shuffling && !solving) {
+                solutionStep = 0;
                 if (btnSolve.isEnabled()) {
                     atStart = false;
                 }
@@ -207,7 +212,6 @@ public class Main extends EngineFrame {
         }
 
         if (isMoving != null) {
-
             animationSteps += delta;
 
             double t = animationSteps / animationTime;
@@ -235,7 +239,7 @@ public class Main extends EngineFrame {
         }
 
         if (shuffling && isMoving == null && shuffleMovesRemaining > 0) {
-            shuffleOneMove();
+            shuffle();
             shuffleMovesRemaining--;
         }
 
@@ -253,12 +257,16 @@ public class Main extends EngineFrame {
             if (found) {
                 solving = true;
                 solutionStep = 0;
+
+                hudStartX = -120;
+                hudTargetX = 0;
+                hudAnimProgress = 0;
+                hudAnimating = true;
             }
 
         }
 
         if (solving && isMoving == null && solutionStep < solutionPath.size()) {
-
             int[] current = getCurrentState();
             int[] next = solutionPath.get(solutionStep);
 
@@ -284,6 +292,21 @@ public class Main extends EngineFrame {
             solving = false;
         }
 
+        if (hudAnimating) {
+            hudAnimProgress += delta;
+
+            double t = hudAnimProgress / hudAnimTime;
+            if (t > 1) {
+                t = 1;
+            }
+
+            hudX = hudStartX + (hudTargetX - hudStartX) * t;
+
+            if (t >= 1) {
+                hudAnimating = false;
+            }
+        }
+
         if (shuffling) {
             animationTime = shuffleAnimationTime;
         } else if (solving) {
@@ -299,7 +322,6 @@ public class Main extends EngineFrame {
 
     @Override
     public void draw() {
-
         clearBackground(BLACK);
 
         fillRectangle(groupUntitled.getBounds(), LIGHTGRAY);
@@ -314,10 +336,19 @@ public class Main extends EngineFrame {
 
         if (isSolved(getCurrentState()) && !atStart && !shuffling && !solving) {
             fillRectangle(0, 0, getScreenWidth(), pieceImg.getHeight(), ColorUtils.fade(BLACK, 0.5));
+            int messageFontSize = 60;
+
+            String wonMessage = "!YOU WON!";
+            String subMessage = "PLAY IT AGAIN";
+
+            drawText(wonMessage, getScreenWidth() / 2 - measureText(wonMessage, messageFontSize) / 2, pieceImg.getHeight() / 2 - messageFontSize, messageFontSize, GREEN);
+            drawText(subMessage, getScreenWidth() / 2 - measureText(subMessage, messageFontSize / 2) / 2, pieceImg.getHeight() / 2, messageFontSize / 2, WHITE);
         }
 
-        if (solving || isSolved(getCurrentState()) && !atStart) {
-            drawText(String.valueOf(solutionStep) + " / " + String.valueOf(solutionPath.size()), 0, 0, 20, PINK);
+        if (solving || isSolved(getCurrentState()) && !atStart && solutionStep > 0) {
+            fillRectangle(hudX, 0, 100, 30, LIGHTGRAY);
+            drawRectangle(hudX, 0, 100, 30, GRAY);
+            drawText(String.valueOf(solutionStep) + " / " + String.valueOf(solutionPath.size()), (int)hudX + 8, 8, 20, DARKGRAY);
         }
     }
 
@@ -344,8 +375,27 @@ public class Main extends EngineFrame {
         drawImage();
     }
 
-    private void movePiece(int lin, int col) {
+    private int findEmpty(int[] state) {
+        for (int i = 0; i < state.length; i++) {
+            if (state[i] == -1) {
+                return i;
+            }
+        }
 
+        return -1;
+    }
+
+    private int[] swap(int[] state, int a, int b) {
+        int[] newState = state.clone();
+
+        int temp = newState[a];
+        newState[a] = newState[b];
+        newState[b] = temp;
+
+        return newState;
+    }
+
+    private void movePiece(int lin, int col) {
         if (isMoving != null) {
             return;
         }
@@ -357,7 +407,6 @@ public class Main extends EngineFrame {
         int destCol = -1;
 
         for (int i = 0; i < 4; i++) {
-
             int currentLin = lin + neighborLin[i];
             int currentCol = col + neighborCol[i];
 
@@ -369,13 +418,10 @@ public class Main extends EngineFrame {
                     destCol = currentCol;
                     break;
                 }
-
             }
-
         }
 
         if (destLin != -1) {
-
             Piece p = grid[lin][col];
 
             grid[destLin][destCol] = p;
@@ -390,36 +436,86 @@ public class Main extends EngineFrame {
             isMoving = p;
 
             animationSteps = 0;
-
         }
-
     }
 
-    private int findEmpty(int[] state) {
+    private void shuffle() {
+        int emptyLin = -1;
+        int emptyCol = -1;
 
-        for (int i = 0; i < state.length; i++) {
-            if (state[i] == -1) {
-                return i;
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                if (grid[i][j] == null) {
+                    emptyLin = i;
+                    emptyCol = j;
+                }
             }
         }
 
-        return -1;
+        int prevEmptyLin = emptyLin;
+        int prevEmptyCol = emptyCol;
+
+        int[] neighborLin = {-1, 0, 1, 0};
+        int[] neighborCol = {0, 1, 0, -1};
+
+        java.util.List<int[]> candidates = new ArrayList<>();
+
+        for (int i = 0; i < 4; i++) {
+            int lin = emptyLin + neighborLin[i];
+            int col = emptyCol + neighborCol[i];
+
+            if (lin >= 0 && lin < size && col >= 0 && col < size) {
+
+                if (!(lin == lastShuffleLin && col == lastShuffleCol)) {
+                    candidates.add(new int[]{lin, col});
+                }
+            }
+        }
+
+        if (!candidates.isEmpty()) {
+            java.util.Random rand = new java.util.Random();
+
+            int p = rand.nextInt(candidates.size());
+
+            int lin = candidates.get(p)[0];
+            int col = candidates.get(p)[1];
+
+            movePiece(lin, col);
+
+            lastShuffleLin = prevEmptyLin;
+            lastShuffleCol = prevEmptyCol;
+        }
     }
 
-    private int[] swap(int[] state, int a, int b) {
+    private boolean isSolved(int[] state) {
+        for (int i = 0; i < state.length - 1; i++) {
+            if (state[i] != i) {
+                return false;
+            }
+        }
 
-        int[] newState = state.clone();
+        return state[state.length - 1] == -1;
+    }
 
-        int temp = newState[a];
-        newState[a] = newState[b];
-        newState[b] = temp;
+    private int[] getCurrentState() {
+        int[] state = new int[size * size];
+        int k = 0;
 
-        return newState;
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
 
+                if (grid[i][j] == null) {
+                    state[k++] = -1;
+                } else {
+                    state[k++] = grid[i][j].getValue();
+                }
+            }
+        }
+
+        return state;
     }
 
     private boolean solveDFS(int[] state, java.util.Set<String> visited, java.util.List<int[]> path, int depth, int maxDepth) {
-
         if (isSolved(state)) {
             return true;
         }
@@ -445,7 +541,6 @@ public class Main extends EngineFrame {
         int[] dCol = {0, 1, 0, -1};
 
         for (int i = 0; i < 4; i++) {
-
             int nl = lin + dLin[i];
             int nc = col + dCol[i];
 
@@ -462,97 +557,10 @@ public class Main extends EngineFrame {
                 }
 
                 path.remove(path.size() - 1);
-
             }
-
         }
 
         return false;
-
-    }
-
-    private void shuffleOneMove() {
-
-        int emptyLin = -1;
-        int emptyCol = -1;
-
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
-                if (grid[i][j] == null) {
-                    emptyLin = i;
-                    emptyCol = j;
-                }
-            }
-        }
-
-        int prevEmptyLin = emptyLin;
-        int prevEmptyCol = emptyCol;
-
-        int[] neighborLin = {-1, 0, 1, 0};
-        int[] neighborCol = {0, 1, 0, -1};
-
-        java.util.List<int[]> candidates = new ArrayList<>();
-
-        for (int i = 0; i < 4; i++) {
-
-            int lin = emptyLin + neighborLin[i];
-            int col = emptyCol + neighborCol[i];
-
-            if (lin >= 0 && lin < size && col >= 0 && col < size) {
-
-                if (!(lin == lastShuffleLin && col == lastShuffleCol)) {
-                    candidates.add(new int[]{lin, col});
-                }
-
-            }
-
-        }
-
-        if (!candidates.isEmpty()) {
-
-            java.util.Random rand = new java.util.Random();
-
-            int p = rand.nextInt(candidates.size());
-
-            int lin = candidates.get(p)[0];
-            int col = candidates.get(p)[1];
-
-            movePiece(lin, col);
-
-            lastShuffleLin = prevEmptyLin;
-            lastShuffleCol = prevEmptyCol;
-        }
-    }
-
-    private int[] getCurrentState() {
-
-        int[] state = new int[size * size];
-        int k = 0;
-
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
-
-                if (grid[i][j] == null) {
-                    state[k++] = -1;
-                } else {
-                    state[k++] = grid[i][j].getValue();
-                }
-
-            }
-        }
-
-        return state;
-    }
-
-    private boolean isSolved(int[] state) {
-
-        for (int i = 0; i < state.length - 1; i++) {
-            if (state[i] != i) {
-                return false;
-            }
-        }
-
-        return state[state.length - 1] == -1;
     }
 
     public static void main(String[] args) {
