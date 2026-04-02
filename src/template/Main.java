@@ -24,13 +24,15 @@ public class Main extends EngineFrame {
     private static final int size = 3;
 
     private final double normalAnimationTime = 0.3;
-    private final double shuffleAnimationTime = 0.1;
-    private final double solveAnimationTime = 0.2;
+    private final double shuffleAnimationTime = 0.01;
+    private final double solveAnimationTime = 0.001;
 
     private int lastShuffleLin = -1;
     private int lastShuffleCol = -1;
     private int shuffleMovesRemaining = 0;
     private int solutionStep = 0;
+    private int calls = 0;
+    private int MAX_CALLS = 1000000;
 
     private double pieceSize;
     private double animationTime;
@@ -49,6 +51,7 @@ public class Main extends EngineFrame {
     private boolean shuffling = false;
     private boolean solving = false;
     private boolean atStart = true;
+    private boolean solveFailed = false;
 
     private java.util.List<int[]> solutionPath;
     private java.util.List<GuiComponent> components;
@@ -195,6 +198,7 @@ public class Main extends EngineFrame {
 
         if (!idUrl.isVisible()) {
             if (isMouseButtonPressed(MOUSE_BUTTON_LEFT) && isMoving == null && !shuffling && !solving) {
+                solveFailed = false;
                 solutionStep = 0;
                 if (btnSolve.isEnabled()) {
                     atStart = false;
@@ -233,8 +237,9 @@ public class Main extends EngineFrame {
         }
 
         if (btnShuffle.isMousePressed()) {
+            solveFailed = false;
             atStart = false;
-            shuffleMovesRemaining = size * size * size * 2;
+            shuffleMovesRemaining = size * size * size * 5;
             shuffling = true;
         }
 
@@ -252,18 +257,23 @@ public class Main extends EngineFrame {
 
             solutionPath = new ArrayList<>();
 
-            boolean found = solveDFS(start, new java.util.HashSet<>(), solutionPath, 0, 80);
+            calls = 0;
+
+            boolean found = solveDFS(start, new java.util.HashSet<>(), solutionPath, 0, 1000);
 
             if (found) {
                 solving = true;
                 solutionStep = 0;
 
-                hudStartX = -120;
+                hudStartX = -140;
                 hudTargetX = 0;
                 hudAnimProgress = 0;
                 hudAnimating = true;
-            }
 
+                solveFailed = false;
+            } else {
+                solveFailed = true;
+            }
         }
 
         if (solving && isMoving == null && solutionStep < solutionPath.size()) {
@@ -346,9 +356,17 @@ public class Main extends EngineFrame {
         }
 
         if (solving || isSolved(getCurrentState()) && !atStart && solutionStep > 0) {
-            fillRectangle(hudX, 0, 100, 30, LIGHTGRAY);
-            drawRectangle(hudX, 0, 100, 30, GRAY);
-            drawText(String.valueOf(solutionStep) + " / " + String.valueOf(solutionPath.size()), (int)hudX + 8, 8, 20, DARKGRAY);
+            fillRectangle(hudX, 0, 140, 30, LIGHTGRAY);
+            drawRectangle(hudX, 0, 140, 30, GRAY);
+            drawText(String.valueOf(solutionStep) + " / " + String.valueOf(solutionPath.size()), (int) hudX + 8, 8, 20, DARKGRAY);
+        }
+
+        if (solveFailed) {
+            String msg = "UNABLE TO SOLVE (DEPTH LIMIT)";
+            int fontSize = 30;
+
+            fillRectangle(0, 0, getScreenWidth(), pieceImg.getHeight(), ColorUtils.fade(BLACK, 0.5));
+            drawText(msg, getScreenWidth() / 2 - measureText(msg, fontSize) / 2, pieceImg.getHeight() / 2, fontSize, RED);
         }
     }
 
@@ -516,12 +534,18 @@ public class Main extends EngineFrame {
     }
 
     private boolean solveDFS(int[] state, java.util.Set<String> visited, java.util.List<int[]> path, int depth, int maxDepth) {
-        if (isSolved(state)) {
-            return true;
+        calls++;
+
+        if (calls > MAX_CALLS) {
+            return false;
         }
 
         if (depth >= maxDepth) {
             return false;
+        }
+
+        if (isSolved(state)) {
+            return true;
         }
 
         String key = java.util.Arrays.toString(state);
@@ -541,6 +565,7 @@ public class Main extends EngineFrame {
         int[] dCol = {0, 1, 0, -1};
 
         for (int i = 0; i < 4; i++) {
+
             int nl = lin + dLin[i];
             int nc = col + dCol[i];
 
@@ -559,6 +584,8 @@ public class Main extends EngineFrame {
                 path.remove(path.size() - 1);
             }
         }
+        
+        visited.remove(key);
 
         return false;
     }
